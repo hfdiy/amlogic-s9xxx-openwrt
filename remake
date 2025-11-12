@@ -93,8 +93,8 @@ stable_kernel=("5.15.y" "6.1.y")
 flippy_kernel=(${stable_kernel[@]})
 dev_kernel=(${stable_kernel[@]})
 beta_kernel=(${stable_kernel[@]})
-rk3588_kernel=("5.10.y")
-rk35xx_kernel=("5.10.y")
+rk3588_kernel=("6.1.y")
+rk35xx_kernel=("6.1.y")
 h6_kernel=("6.6.y")
 specific_6xy=("6.1.y" "6.6.y" "6.12.y")
 specific_5xy=("5.4.y" "5.10.y" "5.15.y")
@@ -111,9 +111,12 @@ uboot_meson_g12b=("gtking.bin" "gtkingpro.bin" "gtkingpro-rev-a.bin" "s905x2-s92
 uboot_meson_sm1=("x96maxplus.bin" "ugoos-x3.bin" "tx3-qz.bin" "tx3-bz.bin" "skyworth-lb2004.bin")
 uboot_meson_gxbb=("p201.bin" "s905.bin")
 
+# Set OpenWrt default IP address
+openwrt_ip="192.168.1.1"
+ip_regex="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+
 # Initialize the build device
 make_board="all"
-
 # Set OpenWrt firmware size (Unit: MiB, boot_mb >= 256, root_mb >= 512)
 boot_mb="256"
 root_mb="1024"
@@ -181,7 +184,7 @@ init_var() {
     echo -e "${STEPS} Start Initializing Variables..."
 
     # If it is followed by [ : ], it means that the option requires a parameter value
-    local options="b:r:u:k:a:s:n:"
+    local options="b:r:u:k:a:p:s:n:"
     parsed_args=$(getopt -o "${options}" -- "${@}")
     [[ ${?} -ne 0 ]] && error_msg "Parameter parsing failed."
     eval set -- "${parsed_args}"
@@ -233,6 +236,14 @@ init_var() {
                 shift 2
             else
                 error_msg "Invalid -a parameter [ ${2} ]!"
+            fi
+            ;;
+        -p | --IP)
+            if [[ -n "${2}" && "${2}" =~ ${ip_regex} ]]; then
+                openwrt_ip="${2}"
+                shift 2
+            else
+                error_msg "Invalid -p parameter [ ${2} ]!"
             fi
             ;;
         -s | --Size)
@@ -287,7 +298,7 @@ check_data() {
             >${model_txt}
 
     # Get a list of build devices
-    if [[ "${make_board}" =~ ^(all|top50|rest50)$ ]]; then
+    if [[ "${make_board}" =~ ^(all|top55|after55)$ ]]; then
         board_list=":(yes)"
         make_openwrt=($(
             cat ${model_conf} |
@@ -301,14 +312,14 @@ check_data() {
     fi
     [[ "${#make_openwrt[@]}" -eq 0 ]] && error_msg "The board is missing, stop making."
 
-    # Get the list of the first 50 boards
-    [[ "${make_board}" == "top50" ]] && {
-        make_openwrt=("${make_openwrt[@]:0:50}")
+    # Get the list of boards before the first 55
+    [[ "${make_board}" == "top55" ]] && {
+        make_openwrt=("${make_openwrt[@]:0:55}")
         board_list=":($(echo ${make_openwrt[@]} | sed -e 's/ /\|/g')):(yes|no)"
     }
-    # Get the list of boards after the first 50
-    [[ "${make_board}" == "rest50" ]] && {
-        make_openwrt=("${make_openwrt[@]:50}")
+    # Get the list of boards after the first 55
+    [[ "${make_board}" == "after55" ]] && {
+        make_openwrt=("${make_openwrt[@]:55}")
         board_list=":($(echo ${make_openwrt[@]} | sed -e 's/ /\|/g')):(yes|no)"
     }
 
@@ -396,26 +407,22 @@ find_openwrt() {
     fi
 
     # Extract the OpenWrt release information file
-    source_codename=""
     source_release_file="etc/openwrt_release"
     temp_dir="$(mktemp -d)"
     (cd ${temp_dir} && tar -mxzf "${openwrt_path}/${openwrt_default_file}" "./${source_release_file}" 2>/dev/null)
-    # Find custom DISTRIB_SOURCECODE, such as [ official/lede ]
+    # Find custom parameters
     [[ -f "${temp_dir}/${source_release_file}" ]] && {
-        source_codename="$(cat ${temp_dir}/${source_release_file} 2>/dev/null | grep -oE "^DISTRIB_SOURCECODE=.*" | head -n 1 | cut -d"'" -f2)"
-        [[ -n "${source_codename}" ]] && {
-            # Record OpenWrt source codes repository
-            case "${source_codename}" in
-            official) OPENWRT_SOURCECODE="github.com/openwrt/openwrt" ;;
-            lede) OPENWRT_SOURCECODE="github.com/coolsnowwolf/lede" ;;
-            immortalwrt) OPENWRT_SOURCECODE="github.com/immortalwrt/immortalwrt" ;;
-            *) OPENWRT_SOURCECODE="unknown" ;;
-            esac
+        # Load the OpenWrt release information
+        source "${temp_dir}/${source_release_file}"
+        # For example, DISTRIB_SOURCEREPO='github.com/openwrt/openwrt'
+        source_repo="${DISTRIB_SOURCEREPO:-""}"
+        # For example, DISTRIB_SOURCECODE='openwrt'
+        source_codename="${DISTRIB_SOURCECODE:-""}"
+        # For example, DISTRIB_SOURCEBRANCH='openwrt-24.10'
+        source_branch="${DISTRIB_SOURCEBRANCH:-""}"
 
-            # Complete filename
-            [[ "${source_codename:0:1}" != "_" ]] && source_codename="_${source_codename}"
-        }
-        echo -e "${INFO} The source_codename: [ ${source_codename} ], OpenWrt source code repository: [ ${OPENWRT_SOURCECODE} ]"
+        # Print the source information
+        echo -e "${INFO} The source codename: [ ${source_codename} ], source branch: [ ${source_branch} ], source repository: [ ${source_repo} ]."
     }
     # Remove temporary directory
     rm -rf ${temp_dir}
@@ -444,54 +451,55 @@ download_depends() {
     cd ${current_path}
     echo -e "${STEPS} Start downloading dependency files..."
 
-    # Download Armbian u-boot files
+    # Download u-boot files
     git_path="$(mktemp -d)"
     git_pull_dir ${uboot_repo} main ${git_path}
-    # Move the files to the storage directory
+    # Move the u-boot files to the storage directory
     mkdir -p ${uboot_path}
     cp -af --no-preserve=ownership ${git_path}/u-boot/* ${uboot_path}
-    [[ "${?}" -eq 0 ]] || error_msg "Failed to move the [ u-boot ] files to the [ ${uboot_path} ] directory."
+    [[ "${?}" -eq 0 ]] && echo -e "${INFO} OpenWrt: u-boot download completed." || error_msg "OpenWrt: u-boot download failed."
     # Delete temporary files
     rm -rf ${git_path}
 
-    # Download Armbian firmware files
+    # Download firmware files
     git_path="$(mktemp -d)"
     git_pull_dir ${firmware_repo} main ${git_path}
-    # Move the files to the storage directory
+    # Move the firmware files to the storage directory
     mkdir -p ${firmware_path}
     cp -af --no-preserve=ownership ${git_path}/firmware/* ${firmware_path}
-    [[ "${?}" -eq 0 ]] && echo -e "${INFO} firmware download completed." || error_msg "firmware download failed."
+    [[ "${?}" -eq 0 ]] && echo -e "${INFO} OpenWrt: firmware download completed." || error_msg "OpenWrt: firmware download failed."
     # Delete temporary files
     rm -rf ${git_path}
 
-    # Download platform files
+    # Download Armbian repository files
     git_path="$(mktemp -d)"
     git_pull_dir ${depends_repo} main ${git_path}
-    # Move the files to the storage directory
+    # Move the platform files to the storage directory
     cp -af --no-preserve=ownership ${git_path}/build-armbian/armbian-files/platform-files/* ${platform_files}
+    [[ "${?}" -eq 0 ]] && echo -e "${INFO} OpenWrt: platform-files download completed." || error_msg "OpenWrt: platform-files download failed."
     # Remove the special files in the [ sbin ] directory of the Armbian system
     rm -rf $(find ${platform_files} -type d -name "sbin")
-    # Download different files
+    # Move the different files to the storage directory
     cp -af --no-preserve=ownership ${git_path}/build-armbian/armbian-files/different-files/* ${different_files}
-    [[ "${?}" -eq 0 ]] && echo -e "${INFO} different-files download completed." || error_msg "different-files download failed."
-    # Download balethirq related files
+    [[ "${?}" -eq 0 ]] && echo -e "${INFO} OpenWrt: different-files download completed." || error_msg "OpenWrt: different-files download failed."
+    # Move the balethirq related files to the storage directory
     cp -f --no-preserve=ownership ${git_path}/build-armbian/armbian-files/common-files/usr/sbin/balethirq.pl ${common_files}/usr/sbin
     cp -f --no-preserve=ownership ${git_path}/build-armbian/armbian-files/common-files/etc/balance_irq ${common_files}/etc
-    [[ "${?}" -eq 0 ]] && echo -e "${INFO} balethirq download completed." || error_msg "balethirq download failed."
+    [[ "${?}" -eq 0 ]] && echo -e "${INFO} OpenWrt: balethirq download completed." || error_msg "OpenWrt: balethirq download failed."
     # Delete temporary files
     rm -rf ${git_path}
 
-    # Download install/update and other related files
+    # Download luci-app-amlogic install/update and other related files
     git_path="$(mktemp -d)"
     git_pull_dir ${script_repo} main ${git_path}
-    # Move the files to the storage directory
+    # Move the sbin files to the storage directory
     cp -af --no-preserve=ownership ${git_path}/luci-app-amlogic/root/usr/sbin/* ${common_files}/usr/sbin
-    [[ "${?}" -eq 0 ]] && echo -e "${INFO} app/sbin download completed." || error_msg "app/sbin download failed."
+    [[ "${?}" -eq 0 ]] && echo -e "${INFO} luci-app-amlogic: sbin download completed." || error_msg "luci-app-amlogic: sbin download failed."
     chmod +x ${common_files}/usr/sbin/*
-    # Move the files to the storage directory
+    # Move the share files to the storage directory
     mkdir -p ${common_files}/usr/share/amlogic
     cp -af --no-preserve=ownership ${git_path}/luci-app-amlogic/root/usr/share/amlogic/* ${common_files}/usr/share/amlogic
-    [[ "${?}" -eq 0 ]] && echo -e "${INFO} app/share download completed." || error_msg "app/share download failed."
+    [[ "${?}" -eq 0 ]] && echo -e "${INFO} luci-app-amlogic: share download completed." || error_msg "luci-app-amlogic: share download failed."
     chmod +x ${common_files}/usr/share/amlogic/*
     # Delete temporary files
     rm -rf ${git_path}
@@ -713,9 +721,13 @@ make_image() {
 
     # echo -e "${INFO} The [ ${board} ] OpenWrt image partition status: [ skip:${skip_mb} / boot:${boot_mb} / rootfs:${root_mb} ] MiB."
 
-    # Set OpenWrt filename
+    # Check output directory
     [[ -d "${out_path}" ]] || mkdir -p ${out_path}
-    openwrt_filename="openwrt${source_codename}_${PLATFORM}_${board}_k${kernel}_$(date +"%Y.%m.%d").img"
+    # Add the source codename to the OpenWrt filename
+    [[ "${source_codename}" == "openwrt" ]] && openwrt_alias="official" || openwrt_alias="${source_codename}"
+    [[ -n "${openwrt_alias}" ]] && openwrt_alias+="_" || openwrt_alias=""
+    # Set OpenWrt image filename
+    openwrt_filename="openwrt_${openwrt_alias}${PLATFORM}_${board}_k${kernel}_$(date +"%Y.%m.%d").img"
     build_image_file="${out_path}/${openwrt_filename}"
     rm -f ${build_image_file}
 
@@ -966,15 +978,25 @@ refactor_rootfs() {
     # Add directory
     mkdir -p .reserved boot run
 
+    # Set default IP address
+    [[ "${openwrt_ip}" != "192.168.1.1" && -f "bin/config_generate" ]] && {
+        sed -i "/lan) ipad=\${ipaddr:-/s/\${ipaddr:-\"[^\"]*\"}/\${ipaddr:-\"${openwrt_ip}\"}/" bin/config_generate
+    }
+
     # Edit fstab
     [[ -f "etc/fstab" && -f "etc/config/fstab" ]] || error_msg "The [ fstab ] files does not exist."
     sed -i "s|LABEL=ROOTFS|UUID=${ROOTFS_UUID}|g" etc/fstab
     sed -i "s|option label 'ROOTFS'|option uuid '${ROOTFS_UUID}'|g" etc/config/fstab
 
-    # Set the keyword for tags in Releases
-    [[ -n "${source_codename}" ]] && {
-        sed -i "s|option amlogic_firmware_tag.*|option amlogic_firmware_tag '${source_codename}'|g" etc/config/amlogic
-    }
+    # Set the OpenWrt download tags for luci-app-amlogic
+    [[ -n "${source_codename}" ]] && tags_str="_${source_codename}" || tags_str=""
+    [[ -n "${source_branch}" ]] && tags_str+="_${source_branch}_"
+    [[ -n "${tags_str}" ]] && sed -i "s|option amlogic_firmware_tag.*|option amlogic_firmware_tag '${tags_str}'|g" etc/config/amlogic
+    # Set the kernel download tags for luci-app-amlogic
+    sed -i "s|option amlogic_kernel_tags.*|option amlogic_kernel_tags 'kernel_${conf_kernel_tags}'|g" etc/config/amlogic
+    # Set the OpenWrt and kernel download branches for luci-app-amlogic
+    kernel_patchlevel="$(echo ${kernel} | awk -F '.' '{print $1"."$2}')"
+    sed -i "s|option amlogic_kernel_branch.*|option amlogic_kernel_branch '${kernel_patchlevel}'|g" etc/config/amlogic
 
     # Modify the default script to [ bash ] for [ cpustat ]
     [[ -x "bin/bash" ]] && {
@@ -995,10 +1017,13 @@ refactor_rootfs() {
     }
 
     # Modify the cpu mode to schedutil
-    [[ -f "etc/config/cpufreq" ]] && sed -i "s/ondemand/schedutil/" etc/config/cpufreq
+    [[ -f "etc/config/cpufreq" ]] && sed -i "s|ondemand|schedutil|" etc/config/cpufreq
 
     # Turn off speed limit by default
     [[ -f "etc/config/nft-qos" ]] && sed -i "s|option limit_enable.*|option limit_enable '0'|g" etc/config/nft-qos
+
+    # Disable the OpenSSL acceleration engine
+    [[ -f "etc/ssl/openssl.cnf" ]] && sed -i "s|^engines = engines_sect|#engines = engines_sect|g" etc/ssl/openssl.cnf
 
     # Add USB and wireless network drivers
     [[ -f "etc/modules.d/usb-net-rtl8150" ]] || echo "rtl8150" >etc/modules.d/usb-net-rtl8150
@@ -1157,7 +1182,9 @@ EOF
     else
         echo "SHOW_INSTALL_MENU='yes'" >>${op_release}
     fi
-    echo "OPENWRT_SOURCECODE='${OPENWRT_SOURCECODE}'" >>${op_release}
+    echo "OPENWRT_SOURCEREPO='${source_repo}'" >>${op_release}
+    echo "OPENWRT_SOURCECODE='${source_codename}'" >>${op_release}
+    echo "OPENWRT_SOURCEBRANCH='${source_branch}'" >>${op_release}
     echo "BUILDER_NAME='${builder_name}'" >>${op_release}
     echo "CONTRIBUTORS='${CONTRIBUTORS}'" >>${op_release}
     echo "PACKAGED_DATE='$(date +%Y-%m-%d)'" >>${op_release}

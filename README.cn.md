@@ -6,6 +6,13 @@
 
 本项目托众多的[贡献者](https://github.com/ophub/amlogic-s9xxx-armbian/blob/main/CONTRIBUTORS.md)，为 `Amlogic`，`Rockchip` 和 `Allwinner` 盒子构建 OpenWrt 系统。支持写入 eMMC 中使用，支持更新内核等功能，使用方法详见 [OpenWrt 使用文档](./documents/README.cn.md)。最新的固件可以在 [Releases](https://github.com/ophub/amlogic-s9xxx-openwrt/releases) 中下载。欢迎你 `Fork` 并进行个性化软件包定制。如果对你有用，可以点仓库右上角的 `Star` 表示支持。
 
+## OpenWrt 固件默认信息
+
+| 系统名称        | 默认账号 | 默认密码  | SSH 端口 | IP 地址 |
+| -------------- | ------- | ------- | ------- | ------- |
+| 🛜 [OpenWrt.OS](https://github.com/ophub/amlogic-s9xxx-openwrt/releases) | root | password | 22 | 192.168.1.1 |
+| 🐋 [OpenWrt.Docker](https://hub.docker.com/u/ophub) | root | password | 22 | 192.168.1.1 |
+
 ## OpenWrt 固件说明
 
 | 芯片  | 设备 | [内核](https://github.com/ophub/kernel) | [OpenWrt](https://github.com/ophub/amlogic-s9xxx-openwrt/releases) |
@@ -36,7 +43,7 @@
 | h6 | [Vplus](https://github.com/ophub/amlogic-s9xxx-armbian/issues/1100), [Tanix-TX6](https://github.com/ophub/amlogic-s9xxx-armbian/issues/1120), [TQC-A01](https://github.com/ophub/amlogic-s9xxx-armbian/pull/1638) | [6.x.y](https://github.com/ophub/kernel/releases/tag/kernel_stable)<br>[h6](https://github.com/ophub/kernel/releases/tag/kernel_h6) | allwinner_boxname.img |
 
 > [!TIP]
-> 目前 [s905 的盒子](https://github.com/ophub/amlogic-s9xxx-armbian/issues/1173)只能在 `TF/SD/USB` 中使用，其他型号的盒子支持写入 `EMMC` 中使用。更多信息请查阅[支持的设备列表说明](make-openwrt/openwrt-files/common-files/etc/model_database.conf)。可以参考说明文档中 12.15 章节的方法[添加新的支持设备](https://github.com/ophub/amlogic-s9xxx-armbian/blob/main/documents/README.cn.md#1215-如何添加新的支持设备)。使用前先阅读 [OpenWrt 使用文档](./documents/README.cn.md)，常见问题都有解决方法。
+> 目前 [s905 的盒子](https://github.com/ophub/amlogic-s9xxx-armbian/issues/1173)只能在 `TF/SD/USB` 中使用，其他型号的盒子支持写入 `EMMC` 中使用。更多信息请查阅 [✅支持的设备列表说明](make-openwrt/openwrt-files/common-files/etc/model_database.conf)。可以参考说明文档中 12.15 章节的方法[添加新的支持设备](https://github.com/ophub/amlogic-s9xxx-armbian/blob/main/documents/README.cn.md#1215-如何添加新的支持设备)。使用前先阅读 [OpenWrt 使用文档](./documents/README.cn.md)，常见问题都有解决方法。
 
 ## 安装及升级 OpenWrt 的相关说明
 
@@ -119,11 +126,12 @@ sudo apt-get install -y $(cat make-openwrt/scripts/ubuntu2404-make-openwrt-depen
 
 | 参数  | 含义       | 说明               |
 | ---- | ---------- | ----------------- |
-| -b   | Board      | 指定需要编译的设备代号。例如，`-b s905x3` 表示编译代号为 s905x3 的设备，多个设备可用下划线连接，如 `-b s905x3_s905d`。特殊值：`all` 表示编译全部设备，`top50` 表示编译设备库中的前 50 个，`rest50` 表示从第 51 个开始至最后一个。设备代号列表详见 [model_database.conf](make-openwrt/openwrt-files/common-files/etc/model_database.conf) 中的 `BOARD` 配置项。默认值为 `all` |
+| -b   | Board      | 指定需要编译的设备代号。例如，`-b s905x3` 表示编译代号为 s905x3 的设备，多个设备可用下划线连接，如 `-b s905x3_s905d`。特殊值：`all` 表示编译全部设备，`top55` 表示编译设备库中的前 55 个，`after55` 表示从第 56 个开始至最后一个。设备代号列表详见 [model_database.conf](make-openwrt/openwrt-files/common-files/etc/model_database.conf) 中的 `BOARD` 配置项。默认值为 `all` |
 | -r   | KernelRepo | 指定 github.com 内核仓库的 `<owner>/<repo>`。默认值：`ophub/kernel` |
 | -u   | kernelUsage | 设置使用的内核的 `tags 后缀`，如 [stable](https://github.com/ophub/kernel/releases/tag/kernel_stable), [flippy](https://github.com/ophub/kernel/releases/tag/kernel_flippy), [dev](https://github.com/ophub/kernel/releases/tag/kernel_dev), [beta](https://github.com/ophub/kernel/releases/tag/kernel_beta)。默认值：`stable` |
 | -k   | Kernel     | 指定 [kernel](https://github.com/ophub/kernel/releases/tag/kernel_stable) 名称，如 `-k 5.10.125` . 多个内核使用 `_` 进行连接，如 `-k 5.10.125_5.15.50` 。通过 `-k` 参数自由指定的内核版本只对使用 `stable/flippy/dev/beta` 的内核有效。其他内核系列例如 [rk3588](https://github.com/ophub/kernel/releases/tag/kernel_rk3588) / [rk35xx](https://github.com/ophub/kernel/releases/tag/kernel_rk35xx) / 其他内核系列例如 [h6](https://github.com/ophub/kernel/releases/tag/kernel_h6) 等只能使用特定内核。  |
 | -a   | AutoKernel | 设置是否自动采用同系列最新版本内核。当为 `true` 时，将自动在内核库中查找在 `-k` 中指定的内核如 5.10.125 的同系列是否有更新的版本，如有 5.10.125 之后的最新版本时，将自动更换为最新版。设置为 `false` 时将编译指定版本内核。默认值：`true` |
+| -p   | IP       | 指定 OpenWrt 系统的默认 IP 地址，例如： `-p 10.1.1.1`。默认值：`192.168.1.1` |
 | -s   | Size       | 对系统的镜像分区大小进行设置，只设置 ROOTFS 分区大小时可以只指定一个数值，例如： `-s 1024`。需要同时设置 BOOTFS 和 ROOTFS 分区大小时，使用 / 对两个数值进行连接，例如： `-s 256/1024`。默认值：`256/1024` |
 | -n   | BuilderName | 设置 OpenWrt 系统构建者签名。设置签名时请勿包含空格。默认值：`无` |
 
@@ -153,6 +161,7 @@ sudo apt-get install -y $(cat make-openwrt/scripts/ubuntu2404-make-openwrt-depen
     openwrt_path: openwrt/bin/targets/*/*/*rootfs.tar.gz
     openwrt_board: s905x3_s905x2_s905x_s905w_s905d_s922x_s912
     openwrt_kernel: 6.1.y_5.15.y
+    openwrt_ip: 192.168.1.1
 ```
 
 - ### GitHub Actions 输入参数说明
@@ -167,6 +176,7 @@ sudo apt-get install -y $(cat make-openwrt/scripts/ubuntu2404-make-openwrt-depen
 | kernel_usage      | stable            | 设置使用的内核的 `tags 后缀`。功能参考 `-u` |
 | openwrt_kernel    | 6.1.y_5.15.y      | 设置内核版本，功能参考 `-k` |
 | auto_kernel       | true              | 设置是否自动采用同系列最新版本内核。功能参考 `-a` |
+| openwrt_ip        | 192.168.1.1       | 设置 OpenWrt 系统的默认 IP 地址，功能参考 `-p` |
 | openwrt_size      | 256/1024          | 设置系统 BOOTFS 和 ROOTFS 分区的大小，功能参考 `-s` |
 | builder_name      | 无                | 设置 OpenWrt 系统构建者签名，功能参考 `-n`     |
 
@@ -191,16 +201,6 @@ sudo apt-get install -y $(cat make-openwrt/scripts/ubuntu2404-make-openwrt-depen
 | Target Images | tar.gz |
 
 更多信息请查阅 [使用文档](./documents/README.cn.md)
-
-## OpenWrt 固件默认信息
-
-| 名称 | 值 |
-| ---- | ---- |
-| 默认 IP | 192.168.1.1 |
-| 默认账号 | root |
-| 默认密码 | password |
-| 默认 WIFI 名称 | OpenWrt |
-| 默认 WIFI 密码 | 无 |
 
 ## 编译内核
 

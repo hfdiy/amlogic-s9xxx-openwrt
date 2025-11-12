@@ -87,7 +87,6 @@ on:
         options:
           - trixie
           - bookworm
-          - bullseye
           - noble
           - jammy
       kernel_sign:
@@ -123,7 +122,7 @@ jobs:
           sudo rm -f /swapfile /mnt/swapfile
           sudo -E apt-get -y update
           sudo -E apt-get -y purge azure-cli ghc* zulu* llvm* firefox google* dotnet* powershell openjdk* mongodb* moby* || true
-          sudo -E apt-get -y install $(curl -fsSL https://tinyurl.com/ubuntu2404-build-armbian)
+          sudo -E apt-get -y install $(curl -fsSL https://ophub.org/ubuntu2404-build-armbian-depends)
           sudo -E systemctl daemon-reload
           #sudo -E apt-get -y full-upgrade
           sudo -E apt-get -y autoremove --purge
@@ -150,10 +149,21 @@ jobs:
           sudo pvcreate /dev/loop7
           sudo vgcreate github /dev/loop6 /dev/loop7
           sudo lvcreate -n runner -l 100%FREE github
-          sudo mkfs.xfs /dev/github/runner
+          sudo mkfs.xfs -f -i sparse=0 -b size=4096 /dev/github/runner
           sudo mkdir -p /builder
           sudo mount /dev/github/runner /builder
-          sudo chown -R runner.runner /builder
+          sudo chown -R runner:runner /builder
+          # Prepare cached directory
+          echo "Preparing cached directory..."
+          sudo cp -af /home/runner/actions-runner/cached /builder/cached
+          rm -rf /home/runner/actions-runner/cached
+          sudo ln -sf /builder/cached /home/runner/actions-runner/cached
+          echo "_diag directory content:"
+          ls -lh /home/runner/actions-runner/cached/_diag/ 2>/dev/null
+          echo "Verifying the symbolic link..."
+          ls -ld /home/runner/actions-runner/cached
+          df -Th /home/runner/actions-runner/cached
+          echo "Server disk layout:"
           df -Th
           echo "status=success" >> ${GITHUB_OUTPUT}
 
@@ -185,7 +195,7 @@ jobs:
               -v /etc/localtime:/etc/localtime:ro \
               -v /etc/timezone:/etc/timezone:ro \
               --restart=always \
-              ophub/armbian-${{ inputs.docker_image }}:latest
+              ophub/armbian-${{ inputs.docker_image }}:arm64
 
           echo "status=success" >> ${GITHUB_OUTPUT}
 
